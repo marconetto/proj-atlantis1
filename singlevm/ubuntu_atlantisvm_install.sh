@@ -1,5 +1,37 @@
 #!/bin/bash
 
+# wait for the lock to be released
+alias apt-get='apt-get -o DPkg::Lock::Timeout=-1'
+
+function retry_installer() {
+  local attempts=0
+  local max=15
+  local delay=25
+
+  while true; do
+    ((attempts++))
+    "\$@" && {
+      echo "CLI installed"
+      break
+    } || {
+      if [[ \$attempts -lt \$max ]]; then
+        echo "CLI installation failed. Attempt \$attempts/\$max."
+        sleep \$delay
+      else
+        echo "CLI installation has failed after \$attempts attempts."
+        break
+      fi
+    }
+  done
+}
+
+function install_azure_cli() {
+  install_script="/tmp/azurecli_installer.sh"
+  curl -sL https://aka.ms/InstallAzureCLIDeb -o "\$install_script"
+  retry_installer sudo bash "\$install_script"
+  rm \$install_script
+}
+
 echo "This script expects Ubuntu Server 20.04.2 LTS (Focal Fossa)"
 echo "Will install all dependencies, libraries, Rstudio and needed packages to run Atlantis and analyze output"
 
@@ -107,23 +139,24 @@ wget -O azcopy_linux_amd64_10.20.1.tar https://aka.ms/downloadazcopy-v10-linux
 tar -xzf azcopy_linux_amd64_10.20.1.tar
 sudo cp ./azcopy_linux_amd64_*/azcopy /usr/bin/
 
-echo "Install AzCLI"
-
-curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-sudo apt-get update
-sudo apt-get install ca-certificates curl apt-transport-https lsb-release gnupg
-
-sudo mkdir -p /etc/apt/keyrings
-curl -sLS https://packages.microsoft.com/keys/microsoft.asc |
-  gpg --dearmor |
-  sudo tee /etc/apt/keyrings/microsoft.gpg >/dev/null
-sudo chmod go+r /etc/apt/keyrings/microsoft.gpg
-
-AZ_REPO=$(lsb_release -cs)
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" |
-  sudo tee /etc/apt/sources.list.d/azure-cli.list
-
-sudo apt-get update
-if [ -d "$HOME"/bin ]; then
-  PATH=$PATH:$HOME/bin
+if ! command -v az &>/dev/null; then
+  echo "Installing Azure CLI"
+  install_azure_cli
 fi
+
+# sudo apt-get install ca-certificates curl apt-transport-https lsb-release gnupg
+#
+# sudo mkdir -p /etc/apt/keyrings
+# curl -sLS https://packages.microsoft.com/keys/microsoft.asc |
+#   gpg --dearmor |
+#   sudo tee /etc/apt/keyrings/microsoft.gpg >/dev/null
+# sudo chmod go+r /etc/apt/keyrings/microsoft.gpg
+#
+# AZ_REPO=$(lsb_release -cs)
+# echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" |
+#   sudo tee /etc/apt/sources.list.d/azure-cli.list
+
+# sudo apt-get update
+# if [ -d "$HOME"/bin ]; then
+#   PATH=$PATH:$HOME/bin
+# fi
