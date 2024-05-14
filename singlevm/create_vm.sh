@@ -21,7 +21,8 @@ DISKSIZE="100"
 REGION=eastus
 ADDDISK=False
 CLOUDINITFILE="cloud-init-$$.yml"
-AUTOMATIONSCRIPT="https://raw.githubusercontent.com/marconetto/testbed/main/hello.sh"
+# AUTOMATIONSCRIPT="https://raw.githubusercontent.com/marconetto/testbed/main/hello.sh"
+AUTOMATIONSCRIPT="https://raw.githubusercontent.com/marconetto/proj-atlantis1/main/singlevm/ubuntu_atlantisvm_install.sh"
 #################################################################################
 
 function create_resource_group() {
@@ -32,7 +33,7 @@ function create_resource_group() {
 
 function append_script_exec_cloud_init_file() {
 
-  if [ $ADDDISK == "False" ]; then
+  if [ "$ADDDISK" == "False" ]; then
     cat <<EOF >>"$CLOUDINITFILE"
 
 runcmd:
@@ -94,6 +95,7 @@ function create_vm() {
     --public-ip-address '' \
     --custom-data ${CLOUDINITFILE} \
     --admin-username ${ADMINUSER} \
+    --admin-password "${VMPASSWORD}" \
     --generate-ssh-keys ${disk_parameters}"
   eval "$cmd"
 
@@ -130,6 +132,38 @@ function peer_vpn() {
   bash ./create_peering_vpn.sh "$VPNRG" "$VPNVNET" "$RG" "$VMVNETNAME"
 }
 
+##############################################################################
+# Support functions for acquiring user password and public ssh key
+##############################################################################
+function return_typed_password() {
+
+  set +u
+  password=""
+  echo -n ">> Enter password: " >&2
+  read -s password
+  echo "$password"
+}
+
+function get_password_manually() {
+
+  while true; do
+    password1=$(return_typed_password)
+    echo
+    password2=$(return_typed_password)
+
+    if [[ ${password1} != ${password2} ]]; then
+      echo ">> Passwords do not match. Try again."
+    else
+      break
+    fi
+  done
+  VMPASSWORD=$password1
+  echo
+}
+##############################################################################
+# MAIN
+##############################################################################
+
 if [ "$#" -ne 1 ]; then
   echo "Usage: $0 [full|vm]"
   exit 1
@@ -143,6 +177,8 @@ else
   echo "Usage: $0 [full|vm]"
   exit 1
 fi
+
+get_password_manually
 
 if [ "$FULL" == "True" ]; then
   create_resource_group
