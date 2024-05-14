@@ -10,15 +10,15 @@ function retry_installer() {
 
   while true; do
     ((attempts++))
-    "\$@" && {
+    "$@" && {
       echo "CLI installed"
       break
     } || {
-      if [[ \$attempts -lt \$max ]]; then
-        echo "CLI installation failed. Attempt \$attempts/\$max."
-        sleep \$delay
+      if [[ $attempts -lt $max ]]; then
+        echo "CLI installation failed. Attempt $attempts/$max."
+        sleep $delay
       else
-        echo "CLI installation has failed after \$attempts attempts."
+        echo "CLI installation has failed after $attempts attempts."
         break
       fi
     }
@@ -27,9 +27,9 @@ function retry_installer() {
 
 function install_azure_cli() {
   install_script="/tmp/azurecli_installer.sh"
-  curl -sL https://aka.ms/InstallAzureCLIDeb -o "\$install_script"
-  retry_installer sudo bash "\$install_script"
-  rm \$install_script
+  curl -sL https://aka.ms/InstallAzureCLIDeb -o "$install_script"
+  retry_installer sudo bash "$install_script"
+  rm $install_script
 }
 
 echo "This script expects Ubuntu Server 20.04.2 LTS (Focal Fossa)"
