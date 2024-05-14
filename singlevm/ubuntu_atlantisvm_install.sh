@@ -131,7 +131,19 @@ echo "Install R studio"
 
 sudo apt-get install gdebi-core -y
 wget https://download2.rstudio.org/server/focal/amd64/rstudio-server-2023.12.1-402-amd64.deb
-sudo gdebi --n rstudio-server-2023.12.1-402-amd64.deb
+
+# try gdebi multiple times 10 times as there may be some lock issues
+attempts=10
+while ! sudo gdebi --n rstudio-server-2023.12.1-402-amd64.deb; do
+  ((attempts--))
+  if [ $attempts -eq 0 ]; then
+    echo "Failed to install RStudio"
+    exit 1
+  fi
+  echo "Failed to install RStudio. Retrying..."
+  sleep 5
+done
+
 echo "Install AzCopy"
 
 #to uninstall azcopy use https://github.com/MicrosoftDocs/azure-docs/issues/18771
