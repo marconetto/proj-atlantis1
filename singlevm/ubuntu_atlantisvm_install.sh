@@ -95,7 +95,7 @@ unzip -o -q proj-datumgrid-1.5.zip
 
 cd /tmp/proj/ || exit
 
-./configure && make && sudo make install && sudo ldconfig
+./configure && make -j$(nproc) && sudo make install && sudo ldconfig
 
 #these might be needed to install spatial R programs but can conflict with Atlantis proj4
 
