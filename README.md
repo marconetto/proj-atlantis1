@@ -1,7 +1,11 @@
 # proj-atlantis1
 
 
-Some automation for VM creation and azure batch scripts.
+Here we will add some automation to work with atlantis in azure, including:
+- automation to work on a single VM via cloud-init
+- automation to work with single VM via custom image (TO-BE-DONE)
+- automation to run large scale azure batch automation via python sdk
+  (TO-BE-DONE)
 
 
 ## Automation of atlantis VM via cloud-init
