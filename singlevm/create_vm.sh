@@ -2,52 +2,25 @@
 
 set -ue
 ################################################################################
-RG=nettonoaa20240514v1
-FULL=False
 SKU=Standard_D2s_v3
 VMIMAGE=Canonical:0001-com-ubuntu-server-focal:20_04-lts-gen2:20.04.202404080
 
-VNETADDRESS=10.56.0.0
-
 VPNRG=nettovpn2
 VPNVNET=nettovpn2vnet1
-VMNAME=nettovm1
-
-VMVNETNAME="$RG"VNET
-VMSUBNETNAME="$RG"SUBNET
 ADMINUSER=azureuser
-DISKSIZE="100"
 
 REGION=eastus
-ADDDISK=False
 CLOUDINITFILE="cloud-init-$$.yml"
 # AUTOMATIONSCRIPT="https://raw.githubusercontent.com/marconetto/testbed/main/hello.sh"
 AUTOMATIONSCRIPT="https://raw.githubusercontent.com/marconetto/proj-atlantis1/main/singlevm/ubuntu_atlantisvm_install.sh"
 #################################################################################
-
-function create_resource_group() {
+create_resource_group() {
 
   az group create --location "$REGION" \
     --name "$RG"
 }
 
-function append_script_exec_cloud_init_file() {
-
-  if [ "$ADDDISK" == "False" ]; then
-    cat <<EOF >>"$CLOUDINITFILE"
-
-runcmd:
-EOF
-  fi
-
-  cat <<EOF >>"$CLOUDINITFILE"
-    - curl -o /tmp/automation.sh ${AUTOMATIONSCRIPT}
-    - chmod +x /tmp/automation.sh
-    - /tmp/automation.sh
-EOF
-}
-
-function create_cloud_init_file() {
+create_cloud_init_file() {
 
   cat <<EOF >"$CLOUDINITFILE"
 #cloud-config
@@ -55,32 +28,63 @@ function create_cloud_init_file() {
 EOF
 }
 
-function append_disk_cloud_init_file() {
+append_script_exec_cloud_init_file() {
 
-  cat <<EOF >"$CLOUDINITFILE"
+  numlines=$(wc -l <"$CLOUDINITFILE" | cut -d' ' -f1)
+  if [ "$numlines" -eq 2 ]; then
+    cat <<EOF >>"$CLOUDINITFILE"
+
 runcmd:
-    - sudo parted /dev/sdb --script mklabel gpt mkpart xfspart xfs 0% 100%
-    - sudo partprobe /dev/sdb
-    - sudo mkfs.xfs /dev/sdb1
-    - sudo mkdir /datadrive
-    - sudo mount /dev/sdb1 /datadrive
-    - sudo chown -R azureuser:azureuser /datadrive
+EOF
+  fi
+
+  cat <<EOF >>"$CLOUDINITFILE"
+    - echo "automation started at \$(date)" > /home/$ADMINUSER/automation_started
+    - curl -o /tmp/automation.sh ${AUTOMATIONSCRIPT}
+    - chmod +x /tmp/automation.sh
+    - /tmp/automation.sh
+    - echo "automation completed at \$(date)" > /home/$ADMINUSER/automation_done
+    - chown $ADMINUSER:$ADMINUSER /home/$ADMINUSER/automation_*
 EOF
 }
 
-function create_vm() {
+append_disk_cloud_init_file() {
+
+  cat <<EOF >>"$CLOUDINITFILE"
+runcmd:
+    - |
+      alias apt-get='apt-get -o DPkg::Lock::Timeout=-1'
+      DISK=\$(sudo lsblk -r --output NAME,MOUNTPOINT | awk -F \/ '/sd/ { dsk=substr(\$1,1,3);dsks[dsk]+=1 } END { for ( i in dsks ) { if (dsks[i]==1) print i } }')
+      parted /dev/\$DISK --script mklabel gpt mkpart xfspart xfs 0% 100%
+      partprobe /dev/\${DISK}1
+      mkfs.xfs /dev/\${DISK}1
+      mkdir /datadrive
+      mount /dev/\${DISK}1 /datadrive
+      chown -R $ADMINUSER:$ADMINUSER /datadrive
+      sudo rsync -avzh /home/ /datadrive
+      uid=\$(blkid | grep /dev/\${DISK}1 | awk '{print \$2}' | sed 's/"//g')
+      echo "\$uid /home xfs defaults,nofail,discard 1 2" >> /etc/fstab
+      mount /home
+      umount /datadrive
+EOF
+}
+
+create_vm() {
+
+  disksize=$1
 
   random_number=$((RANDOM % 9000 + 1000))
 
-  VMNAME="vmnetto_"${random_number}
-  echo "creating $VMNAME"
+  VMNAME="vmatlantis_"${random_number}
+
+  echo "Provisioning vm: $VMNAME"
 
   create_cloud_init_file
 
   disk_parameters=("")
-  if [ "$ADDDISK" == "True" ]; then
+  if [ "$disksize" -gt 0 ]; then
     append_disk_cloud_init_file
-    disk_parameters="--data-disk-sizes-gb ${DISKSIZE}"
+    disk_parameters="--data-disk-sizes-gb ${disksize}"
   fi
 
   append_script_exec_cloud_init_file
@@ -92,7 +96,6 @@ function create_vm() {
     --vnet-name ${VMVNETNAME} \
     --subnet ${VMSUBNETNAME} \
     --security-type 'Standard' \
-    --public-ip-address '' \
     --custom-data ${CLOUDINITFILE} \
     --admin-username ${ADMINUSER} \
     --admin-password "${VMPASSWORD}" \
@@ -100,10 +103,12 @@ function create_vm() {
   eval "$cmd"
 
   PRIVIP=$(az vm show -g "$RG" -n "$VMNAME" -d --query privateIps -otsv)
+  PUBIP=$(az vm show -g "$RG" -n "$VMNAME" -d --query publicIps -otsv)
   echo "Private IP of $VMNAME: $PRIVIP"
+  echo "Public IP of $VMNAME: $PUBIP"
 }
 
-function create_vnet_subnet() {
+create_vnet_subnet() {
 
   az network vnet create -g "$RG" \
     -n "$VMVNETNAME" \
@@ -112,7 +117,7 @@ function create_vnet_subnet() {
     --subnet-prefixes "$VNETADDRESS"/24
 }
 
-function peer_vpn() {
+peer_vpn() {
 
   echo "Pairing vpn network"
 
@@ -132,27 +137,25 @@ function peer_vpn() {
   bash ./create_peering_vpn.sh "$VPNRG" "$VPNVNET" "$RG" "$VMVNETNAME"
 }
 
-##############################################################################
-# Support functions for acquiring user password and public ssh key
-##############################################################################
-function return_typed_password() {
+return_typed_password() {
 
   set +u
+  appendtext=$1
   password=""
-  echo -n ">> Enter password: " >&2
+  echo -n ">> Enter VM admin password$appendtext: " >&2
   read -s password
   echo "$password"
 }
 
-function get_password_manually() {
+get_password_manually() {
 
   while true; do
-    password1=$(return_typed_password)
+    password1=$(return_typed_password "")
     echo
-    password2=$(return_typed_password)
+    password2=$(return_typed_password "(confirm)")
 
     if [[ ${password1} != ${password2} ]]; then
-      echo ">> Passwords do not match. Try again."
+      echo -e "\n>> Passwords do not match. Try again."
     else
       break
     fi
@@ -160,32 +163,88 @@ function get_password_manually() {
   VMPASSWORD=$password1
   echo
 }
+
+usage() {
+  echo "Usage: $0 -p <env|vm> -r <resourcegroup> -vnet <vnet> -subnet <subnet> [ -d <disksize> ] [ -a <ipaddress> ]"
+  echo "  -p <env|vm>         Provision environment (env) or VM (vm)"
+  echo "  -r <resourcegroup>  Specify resource group"
+  echo "  -vnet <vnet>        Specify virtual network"
+  echo "  -subnet <subnet>    Specify subnet"
+  echo "  -d <disksize>       Specify disk size in GB (optional)"
+  echo "  -a <ipaddress>      Specify ip address for vnet (e.g. 10.51.0.1)"
+  exit
+}
+
+parse_arguments() {
+  while getopts ":p:r:v:s:d:a:" opt; do
+    case ${opt} in
+    p)
+      option_p=$OPTARG
+      ;;
+    r)
+      option_r=$OPTARG
+      ;;
+    v)
+      option_vnet=$OPTARG
+      ;;
+    s)
+      option_subnet=$OPTARG
+      ;;
+    d)
+      option_d=$OPTARG
+      ;;
+    a)
+      option_a=$OPTARG
+      ;;
+
+    \?)
+      echo "Invalid option: $OPTARG" 1>&2
+      usage
+      ;;
+    :)
+      echo "Option -$OPTARG requires an argument." 1>&2
+      usage
+      ;;
+    esac
+  done
+  shift $((OPTIND - 1))
+
+  if [ "$option_p" != "env" ] && [ "$option_p" != "vm" ]; then
+    echo "Invalid option for -p. Must be 'env' or 'vm'"
+    usage
+  fi
+
+  if [ "$option_p" == "env" ] && [ -z "${option_a+x}" ]; then
+    echo "Missing option -a when provisioning (env)ironment"
+    usage
+  fi
+}
 ##############################################################################
 # MAIN
 ##############################################################################
+parse_arguments "$@"
 
-if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 [full|vm]"
-  exit 1
+if [[ -z ${option_p+x} || -z ${option_r+x} || -z ${option_vnet+x} || -z ${option_subnet+x} ]]; then
+  echo "Missing required options."
+  usage
 fi
 
-if [ "$1" == "full" ]; then
-  FULL=True
-elif [ "$1" == "vm" ]; then
-  FULL=False
-else
-  echo "Usage: $0 [full|vm]"
-  exit 1
-fi
+disksize=${option_d:-0}
+provision=$option_p
+RG=$option_r
+VMVNETNAME=$option_vnet
+VMSUBNETNAME=$option_subnet
+VNETADDRESS=${option_a:-""}
 
 get_password_manually
 
-if [ "$FULL" == "True" ]; then
+if [ "$provision" == "env" ]; then
+  echo "Provisioning environment"
   create_resource_group
   create_vnet_subnet
-  peer_vpn
+  # peer_vpn
 fi
 
-create_vm
+create_vm "$disksize"
 
-# rm -f $CLOUDINITFILE
+rm -f "$CLOUDINITFILE"
