@@ -44,6 +44,13 @@ subnet.
 Inside the script there is a variable to specify the automation script url:
 `AUTOMATIONSCRIPT="https://raw.githubusercontent.com/marconetto/proj-atlantis1/main/singlevm/ubuntu_atlantisvm_install.sh"`
 
+Make sure you set the right account for using the azure cli (command line
+interface):
+
+```
+az account set -n <your subscription>
+```
+
 Once the script is executed, you will be asked to create an admin password for
 the VM (twice).
 
