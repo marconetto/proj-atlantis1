@@ -7,7 +7,7 @@ Some automation for VM creation and azure batch scripts.
 ## Automation of atlantis VM via cloud-init
 
 
-Use the `create_vm.sh` bash script from `singlevm` folder.
+Use the `create_vm.sh` [bash](https://www.gnu.org/software/bash/) script from `singlevm` folder.
 
 The script:
 - provisions a VM, which will run another bash script containing
