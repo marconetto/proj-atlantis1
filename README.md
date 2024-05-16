@@ -37,6 +37,10 @@ Usage: ./create_vm.sh -p <env|vm> -r <resourcegroup> -vnet <vnet> -subnet <subne
   -a <ipaddress>      Specify ip address for vnet (e.g. 10.51.0.1)
 ```
 
+The `env` option provisions a resource group, vnet, subnet, and the vm. Whereas
+the `vm` option provisions only the vm on an existing resource group, vnet,
+subnet.
+
 Inside the script there is a variable to specify the automation script url:
 `AUTOMATIONSCRIPT="https://raw.githubusercontent.com/marconetto/proj-atlantis1/main/singlevm/ubuntu_atlantisvm_install.sh"`
 
