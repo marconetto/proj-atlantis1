@@ -81,7 +81,7 @@ The `create_vm.sh` script creates a file called `automation_done` in the home
 directory so you know the automation is done.
 
 
-To access RStudio, open the browser with: <ip>:8787
+To access RStudio, open the browser with: `<ip>:8787`
 
 <img src=".//figs/rstudio.png" title="Default title" alt="alt text" style="display: block; margin: auto;" />
 
