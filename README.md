@@ -10,6 +10,7 @@ Here we will add some automation to work with atlantis in azure, including:
 
 ## Automation of atlantis VM via cloud-init
 
+Here we describe a solution based on [cloud-init](https://cloudinit.readthedocs.io/en/latest/)
 
 Use the `create_vm.sh` [bash](https://www.gnu.org/software/bash/) script from `singlevm` folder.
 
