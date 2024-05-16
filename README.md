@@ -10,8 +10,8 @@ Some automation for VM creation and azure batch scripts.
 Use the `create_vm.sh` [bash](https://www.gnu.org/software/bash/) script from `singlevm` folder.
 
 The script:
-- provisions a VM, which will run another bash script containing
-all instructions to install atlantis + rstudio.
+- provisions a VM, which calls a git hosted automation bash script containing
+all instructions to install atlantis + rstudio and other dependencies.
 - allows specification of a disk size (in GB) to be added to the VM, which will be
 mounted as the new home directory.
 
