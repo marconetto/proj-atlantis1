@@ -71,6 +71,7 @@ EOF
 
 create_vm() {
 
+  set -x
   disksize=$1
 
   random_number=$((RANDOM % 9000 + 1000))
@@ -106,6 +107,7 @@ create_vm() {
   PUBIP=$(az vm show -g "$RG" -n "$VMNAME" -d --query publicIps -otsv)
   echo "Private IP of $VMNAME: $PRIVIP"
   echo "Public IP of $VMNAME: $PUBIP"
+  set +x
 }
 
 create_vnet_subnet() {
@@ -165,11 +167,11 @@ get_password_manually() {
 }
 
 usage() {
-  echo "Usage: $0 -p <env|vm> -r <resourcegroup> -vnet <vnet> -subnet <subnet> [ -d <disksize> ] [ -a <ipaddress> ]"
+  echo "Usage: $0 -p <env|vm> -r <resourcegroup> -v <vnet> -s <subnet> [ -d <disksize> ] [ -a <ipaddress> ]"
   echo "  -p <env|vm>         Provision environment (env) or VM (vm)"
   echo "  -r <resourcegroup>  Specify resource group"
-  echo "  -vnet <vnet>        Specify virtual network"
-  echo "  -subnet <subnet>    Specify subnet"
+  echo "  -v <vnet>           Specify virtual network"
+  echo "  -s <subnet>         Specify subnet"
   echo "  -d <disksize>       Specify disk size in GB (optional)"
   echo "  -a <ipaddress>      Specify ip address for vnet (e.g. 10.51.0.1)"
   exit
