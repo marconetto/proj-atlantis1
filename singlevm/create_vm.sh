@@ -102,6 +102,7 @@ create_vm() {
   PUBIP=$(az vm show -g "$RG" -n "$VMNAME" -d --query publicIps -otsv)
   echo "Private IP of $VMNAME: $PRIVIP"
   echo "Public IP of $VMNAME: $PUBIP"
+  echo "VM name: $VMNAME"
 }
 
 create_vnet_subnet() {
