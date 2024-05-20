@@ -162,7 +162,8 @@ get_password_manually() {
       break
     fi
   done
-  VMPASSWORD=$password1
+  escaped_password=$(printf "%q" "$password1")
+  VMPASSWORD=$escaped_password
   echo
 }
 
