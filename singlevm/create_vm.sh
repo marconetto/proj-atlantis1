@@ -74,10 +74,6 @@ create_vm() {
   set -x
   disksize=$1
 
-  random_number=$((RANDOM % 9000 + 1000))
-
-  VMNAME="vmatlantis_"${random_number}
-
   echo "Provisioning vm: $VMNAME"
 
   create_cloud_init_file
@@ -168,9 +164,11 @@ get_password_manually() {
 }
 
 usage() {
-  echo "Usage: $0 -p <env|vm> -r <resourcegroup> -v <vnet> -s <subnet> [ -d <disksize> ] [ -a <ipaddress> ]"
+  echo "Usage: $0 -p <env|vm> -r <resourcegroup> [ -n <vmname> | -f <vmprefixname> ] -v <vnet> -s <subnet> [ -d <disksize> ] [ -a <ipaddress> ]"
   echo "  -p <env|vm>         Provision environment (env) or VM (vm)"
   echo "  -r <resourcegroup>  Specify resource group"
+  echo "  -n <vmname>         Specify VM name"
+  echo "  -f <vmprefixname>   Specify VM prefix name (vmname = <predix>_<randoncode>)"
   echo "  -v <vnet>           Specify virtual network"
   echo "  -s <subnet>         Specify subnet"
   echo "  -d <disksize>       Specify disk size in GB (optional)"
@@ -179,7 +177,7 @@ usage() {
 }
 
 parse_arguments() {
-  while getopts ":p:r:v:s:d:a:" opt; do
+  while getopts ":p:r:v:s:d:a:n:f:" opt; do
     case ${opt} in
     p)
       option_p=$OPTARG
@@ -198,6 +196,12 @@ parse_arguments() {
       ;;
     a)
       option_a=$OPTARG
+      ;;
+    n)
+      option_n=$OPTARG
+      ;;
+    f)
+      option_f=$OPTARG
       ;;
 
     \?)
@@ -221,6 +225,17 @@ parse_arguments() {
     echo "Missing option -a when provisioning (env)ironment"
     usage
   fi
+
+  if [ -n "${option_n+x}" ]; then
+    VMNAME=$option_n
+  elif [ -n "${option_f+x}" ]; then
+    random_number=$((RANDOM % 9000 + 1000))
+    VMNAME=${option_f}"_"${random_number}
+  else
+    random_number=$((RANDOM % 9000 + 1000))
+    VMNAME="vmatlantis_"${random_number}
+  fi
+
 }
 ##############################################################################
 # MAIN
