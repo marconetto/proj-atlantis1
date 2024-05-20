@@ -168,11 +168,11 @@ usage() {
   echo "  -p <env|vm>         Provision environment (env) or VM (vm)"
   echo "  -r <resourcegroup>  Specify resource group"
   echo "  -n <vmname>         Specify VM name"
-  echo "  -f <vmprefixname>   Specify VM prefix name (vmname = <predix>_<randoncode>)"
+  echo "  -f <vmprefixname>   Specify VM prefix name (vmname = <predix>_<randomcode>)"
   echo "  -v <vnet>           Specify virtual network"
   echo "  -s <subnet>         Specify subnet"
   echo "  -d <disksize>       Specify disk size in GB (optional)"
-  echo "  -a <ipaddress>      Specify ip address for vnet (e.g. 10.51.0.1)"
+  echo "  -a <ipaddress>      Specify ip address for vnet (e.g. 10.51.0.0)"
   exit
 }
 
@@ -216,12 +216,12 @@ parse_arguments() {
   done
   shift $((OPTIND - 1))
 
-  if [ "$option_p" != "env" ] && [ "$option_p" != "vm" ]; then
+  if [ "${option_p+x}" != "env" ] && [ "${option_p+x}" != "vm" ]; then
     echo "Invalid option for -p. Must be 'env' or 'vm'"
     usage
   fi
 
-  if [ "$option_p" == "env" ] && [ -z "${option_a+x}" ]; then
+  if [ "${option_p+x}" == "env" ] && [ -z "${option_a+x}" ]; then
     echo "Missing option -a when provisioning (env)ironment"
     usage
   fi
