@@ -71,7 +71,6 @@ EOF
 
 create_vm() {
 
-  set -x
   disksize=$1
 
   echo "Provisioning vm: $VMNAME"
@@ -103,7 +102,6 @@ create_vm() {
   PUBIP=$(az vm show -g "$RG" -n "$VMNAME" -d --query publicIps -otsv)
   echo "Private IP of $VMNAME: $PRIVIP"
   echo "Public IP of $VMNAME: $PUBIP"
-  set +x
 }
 
 create_vnet_subnet() {
@@ -216,7 +214,12 @@ parse_arguments() {
   done
   shift $((OPTIND - 1))
 
-  if [ "${option_p+x}" != "env" ] && [ "${option_p+x}" != "vm" ]; then
+  if [ -z "${option_p+x}" ] || [ -z "${option_r+x}" ] || [ -z "${option_vnet+x}" ] || [ -z "${option_subnet+x}" ]; then
+    echo "Missing required options."
+    usage
+  fi
+
+  if [ "${option_p}" != "env" ] && [ "${option_p}" != "vm" ]; then
     echo "Invalid option for -p. Must be 'env' or 'vm'"
     usage
   fi
@@ -264,5 +267,7 @@ if [ "$provision" == "env" ]; then
 fi
 
 create_vm "$disksize"
+
+az vm open-port --port 8787 --resource-group "$RG" --name "$VMNAME" --priority 1010
 
 rm -f "$CLOUDINITFILE"
