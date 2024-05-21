@@ -8,6 +8,9 @@ VMIMAGE=Canonical:0001-com-ubuntu-server-focal:20_04-lts-gen2:20.04.202404080
 VPNRG=nettovpn2
 VPNVNET=nettovpn2vnet1
 ADMINUSER=azureuser
+KEYVAULTENTRY=""
+
+SSHKEY=""
 
 REGION=eastus
 CLOUDINITFILE="cloud-init-$$.yml"
@@ -38,11 +41,19 @@ runcmd:
 EOF
   fi
 
+  KEYVAULTENTRY=$(echo "$VMNAME" | tr -cd 'a-zA-Z0-9')
+  KEYVAULTNAME=${RG}kv
+
   cat <<EOF >>"$CLOUDINITFILE"
     - echo "automation started at \$(date)" > /home/$ADMINUSER/automation_started
     - curl -o /tmp/automation.sh ${AUTOMATIONSCRIPT}
     - chmod +x /tmp/automation.sh
     - /tmp/automation.sh
+    - az login --identity --allow-no-subscriptions
+    - encoded_password=\$(az keyvault secret show --name ${KEYVAULTENTRY} --vault-name ${KEYVAULTNAME} --query 'value' -o tsv)
+    - VMPASSWORD=\$(echo \$encoded_password | base64 -d)
+    - echo "$ADMINUSER:\$VMPASSWORD" | chpasswd
+    - echo "$ADMINUSER \$VMPASSWORD" > /home/$ADMINUSER/automation_password
     - echo "automation completed at \$(date)" > /home/$ADMINUSER/automation_done
     - chown $ADMINUSER:$ADMINUSER /home/$ADMINUSER/automation_*
 EOF
@@ -69,11 +80,39 @@ runcmd:
 EOF
 }
 
+prepare_keyvault() {
+
+  output=$(az keyvault show --name "${KEYVAULTNAME}" --resource-group "$RG" --query "name" -o tsv 2>&1) || true
+
+  if [[ $output == *"ResourceNotFound"* ]]; then
+    echo "Creating keyvault: ${KEYVAULTNAME}"
+    az keyvault create --name "${KEYVAULTNAME}" --resource-group "$RG" --location "$REGION"
+  else
+    echo "Keyvault exists: $KEYVAULTNAME"
+  fi
+
+  az keyvault secret set --vault-name "${KEYVAULTNAME}" --name "$KEYVAULTENTRY" --value "${VMPASSWORD}" >/dev/null
+
+  # Add VM principal ID permission to keyvault
+  VMPrincipalID=$(az vm show \
+    -g "$RG" \
+    -n "$VMNAME" \
+    --query "identity.principalId" \
+    -o tsv)
+
+  az keyvault set-policy --resource-group "$RG" \
+    --name "$KEYVAULTNAME" \
+    --object-id "$VMPrincipalID" \
+    --key-permissions all \
+    --secret-permissions all >/dev/null
+
+}
+
 create_vm() {
 
   disksize=$1
 
-  echo "Provisioning vm: $VMNAME"
+  echo "Provisioning VM: $VMNAME (this may take a while)"
 
   create_cloud_init_file
 
@@ -85,6 +124,13 @@ create_vm() {
 
   append_script_exec_cloud_init_file
 
+  if [ -n "$SSHKEY" ]; then
+    echo "Using Azure ssh key: $SSHKEY"
+    ssh_parameter="--ssh-key-name ${SSHKEY}"
+  else
+    ssh_parameter="--generate-ssh-keys"
+  fi
+
   cmd="az vm create -n $VMNAME \
     -g $RG \
     --image ${VMIMAGE} \
@@ -93,16 +139,35 @@ create_vm() {
     --subnet ${VMSUBNETNAME} \
     --security-type 'Standard' \
     --custom-data ${CLOUDINITFILE} \
+    --assign-identity \
+    --no-wait \
     --admin-username ${ADMINUSER} \
-    --admin-password "${VMPASSWORD}" \
-    --generate-ssh-keys ${disk_parameters}"
+    ${ssh_parameter} ${disk_parameters}"
+
   eval "$cmd"
+
+  # wait to get VM principal id
+  set +e
+  while true; do
+    vm_principal=$(az vm show -g "$RG" -n "$VMNAME" --query identity.principalId -o tsv 2>/dev/null)
+    error=$?
+    [[ "$error" == 0 ]] && break
+    sleep 10
+  done
+  set -e
+
+  prepare_keyvault
+
+}
+
+show_vm_details() {
 
   PRIVIP=$(az vm show -g "$RG" -n "$VMNAME" -d --query privateIps -otsv)
   PUBIP=$(az vm show -g "$RG" -n "$VMNAME" -d --query publicIps -otsv)
   echo "Private IP of $VMNAME: $PRIVIP"
   echo "Public IP of $VMNAME: $PUBIP"
   echo "VM name: $VMNAME"
+  echo "VM adminuser: $ADMINUSER"
 }
 
 create_vnet_subnet() {
@@ -149,7 +214,7 @@ get_password_manually() {
   while true; do
     password1=$(return_typed_password "")
     echo
-    password2=$(return_typed_password "(confirm)")
+    password2=$(return_typed_password " (confirm)")
 
     if [[ ${password1} != ${password2} ]]; then
       echo -e "\n>> Passwords do not match. Try again."
@@ -157,26 +222,27 @@ get_password_manually() {
       break
     fi
   done
-  escaped_password=$(printf "%q" "$password1")
-  VMPASSWORD=$escaped_password
+  encoded_password=$(echo -n "$password1" | base64)
+  VMPASSWORD=$encoded_password
   echo
 }
 
 usage() {
-  echo "Usage: $0 -p <env|vm> -r <resourcegroup> [ -n <vmname> | -f <vmprefixname> ] -v <vnet> -s <subnet> [ -d <disksize> ] [ -a <ipaddress> ]"
+  echo "Usage: $0 -p <env|vm> -r <resourcegroup> [ -n <vmname> | -f <vmprefixname> ] -v <vnet> -s <subnet> [ -d <disksize> ] [ -a <ipaddress> ] [ -k <azuresshkey> ]"
   echo "  -p <env|vm>         Provision environment (env) or VM (vm)"
   echo "  -r <resourcegroup>  Specify resource group"
-  echo "  -n <vmname>         Specify VM name"
-  echo "  -f <vmprefixname>   Specify VM prefix name (vmname = <predix>_<randomcode>)"
+  echo "  -n <vmname>         Specify VM name (optional)"
+  echo "  -f <vmprefixname>   Specify VM prefix name (vmname = <predix>_<randomcode>)  (optional)"
   echo "  -v <vnet>           Specify virtual network"
   echo "  -s <subnet>         Specify subnet"
   echo "  -d <disksize>       Specify disk size in GB (optional)"
-  echo "  -a <ipaddress>      Specify ip address for vnet (e.g. 10.51.0.0)"
+  echo "  -k <azuresshkey>    Specify Azure ssh key (optional)"
+  echo "  -a <ipaddress>      Specify ip address for vnet (e.g. 10.51.0.0) (optional)"
   exit
 }
 
 parse_arguments() {
-  while getopts ":p:r:v:s:d:a:n:f:" opt; do
+  while getopts ":p:r:v:s:d:a:n:f:k:" opt; do
     case ${opt} in
     p)
       option_p=$OPTARG
@@ -202,6 +268,9 @@ parse_arguments() {
     f)
       option_f=$OPTARG
       ;;
+    k)
+      option_k=$OPTARG
+      ;;
 
     \?)
       echo "Invalid option: $OPTARG" 1>&2
@@ -225,9 +294,13 @@ parse_arguments() {
     usage
   fi
 
-  if [ "${option_p+x}" == "env" ] && [ -z "${option_a+x}" ]; then
+  if [ "${option_p}" == "env" ] && [ -z "${option_a+x}" ]; then
     echo "Missing option -a when provisioning (env)ironment"
     usage
+  fi
+
+  if [ -n "${option_k+x}" ]; then
+    SSHKEY=$option_k
   fi
 
   if [ -n "${option_n+x}" ]; then
@@ -269,6 +342,8 @@ fi
 
 create_vm "$disksize"
 
-az vm open-port --port 8787 --resource-group "$RG" --name "$VMNAME" --priority 1010
+az vm open-port --port 8787 --resource-group "$RG" --name "$VMNAME" --priority 1010 >/dev/null
+
+show_vm_details
 
 rm -f "$CLOUDINITFILE"
