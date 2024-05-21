@@ -33,15 +33,16 @@ cd proj-atlantis1/singlevm
 ```
 
 ```
-Usage: ./create_vm.sh -p <env|vm> -r <resourcegroup> [ -n <vmname> | -f <vmprefixname> ] -v <vnet> -s <subnet> [ -d <disksize> ] [ -a <ipaddress> ]
+Usage: ./create_vm.sh -p <env|vm> -r <resourcegroup> [ -n <vmname> | -f <vmprefixname> ] -v <vnet> -s <subnet> [ -d <disksize> ] [ -a <ipaddress> ] [ -k <azuresshkey> ]
   -p <env|vm>         Provision environment (env) or VM (vm)
   -r <resourcegroup>  Specify resource group
-  -n <vmname>         Specify VM name
-  -f <vmprefixname>   Specify VM prefix name (vmname = <predix>_<randomcode>)
+  -n <vmname>         Specify VM name (optional)
+  -f <vmprefixname>   Specify VM prefix name (vmname = <predix>_<randomcode>)  (optional)
   -v <vnet>           Specify virtual network
   -s <subnet>         Specify subnet
   -d <disksize>       Specify disk size in GB (optional)
-  -a <ipaddress>      Specify ip address for vnet (e.g. 10.51.0.0)
+  -k <azuresshkey>    Specify Azure ssh key (optional)
+  -a <ipaddress>      Specify ip address for vnet (e.g. 10.51.0.0) (optional)
 ```
 
 The `env` option provisions a resource group, vnet, subnet, and the vm. Whereas
