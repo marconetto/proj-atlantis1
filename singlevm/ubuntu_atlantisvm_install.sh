@@ -1,7 +1,11 @@
 #!/bin/bash
 
 # wait for the lock to be released
-alias apt-get='apt-get -o DPkg::Lock::Timeout=-1'
+#alias apt-get='apt-get -o DPkg::Lock::Timeout=-1'
+
+apt-get() {
+  command apt-get -o DPkg::Lock::Timeout=-1 "$@"
+}
 
 function retry_installer() {
   local attempts=0
