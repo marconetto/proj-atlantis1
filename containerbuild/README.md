@@ -72,24 +72,57 @@ docker rm $(docker ps -a -q)
 ### Copy the container image to Azure Container Registry (ACR)
 
 
-Create resource group and ACR
+Once you have your container image tested locally, you can use the
+`container_end2end.sh` script to perform the following tasks:
+- create resource group, vnet, subnets, ACR, user managed identity
+- push image to ACR
+- create a container
+
+Note, in this script we are using user managed identity. If you want to use
+service principal, check the Appendix below.
+
+This script can make use of a file called `myips.txt`, in which each line of
+this file contains a public IP address that is allowed to push images to ACR.
+By default, we add your public IP address obtained from `curl -s -4
+ifconfig.co`. But the `myips.txt` may be useful if you have a more restricted
+network in which the your public IP address may be different (e.g. due to NAT).
+
+Usage:
 
 ```
-az group create --name myResourceGroup --location eastus
-az acr create --resource-group myResourceGroup --name <acrName> --sku Basic
+./Usage: ./container_end2end.sh -r <resourcegroup>  -a <ipaddress> [ -n <containername> ]
+  -r <resourcegroup>  Resource group
+  -n <containername>  Container name (optional)
+  -a <ipaddress>      VNet IP address (e.g. 10.51.0.0)
 ```
 
-Login to acr, get its full login name, tag local docker container image with the
-container registry full login name, and push the image. Then list the images in
-the container registry.
+Example:
 
 ```
-az acr login --name <acrName>
-loginserver=$(az acr show --name <acrName> --query loginServer --output tsv)
-docker tag myapp $loginserver/myapp:v1
-docker push $loginserver/myapp:v1
-az acr repository list --name <acrName> --output table
+./container_end2end.sh -r myresourcegroup -a 10.30.0.0 -n mycontainer1
 ```
+
+
+ACR, vnet/subnets, user identity will be based on resource group name.
+
+
+
+To delete the running container:
+
+```
+az container delete --resource-group <ResourceGroupName> --name
+<ContainerInstanceName>
+```
+
+To delete the resource group:
+
+```
+az group delete --name myResourceGroup
+```
+
+
+### Appendix: using service principal
+
 
 Get service principal id and password with the script below as described in
 [here](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-auth-aci).
@@ -107,36 +140,22 @@ Use the Id and password of the service principal on the following command:
 ```
 az container create --resource-group myResourceGroup \
                     --name mycontainer1 \
-                    --image $loginserver/myapp:v1 \
+                    --image $loginserver/myapp::latest \
                     --cpu 1 --memory 1 --registry-login-server $loginserver \
                     --registry-username <service-principal-ID> --registry-password <service-principal-password> --ip-address Public
 ```
 
-You can see the stdout of this running container:
-
-```
-az container list --output table
-az container logs --resource-group <ResourceGroupName> --name <ContainerInstanceName>
-
-```
-
-To delete the running container:
-
-```
-az container delete --resource-group <ResourceGroupName> --name
-<ContainerInstanceName>
-```
-
-To delete the resource group:
-
-```
-az group delete --name myResourceGroup
-```
-
 To delete the service principal:
-
 
 ```
 az ad sp list --display-name MyServicePrincipal --query "[].{appId:appId, displayName:displayName}"
 az ad sp delete --id <id>
 ```
+
+
+## References
+- container and managed identity: <https://learn.microsoft.com/en-us/azure/container-instances/container-instances-managed-identity>
+- container and managed identity: <https://learn.microsoft.com/en-us/azure/container-registry/container-registry-tasks-authentication-managed-identity>
+- limitations container registry and managed identity
+<https://learn.microsoft.com/en-us/azure/container-instances/using-azure-container-registry-mi#limitations>
+- create  container registry: <https://learn.microsoft.com/en-us/azure/container-registry/container-registry-get-started-azure-cli>

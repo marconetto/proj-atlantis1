@@ -265,7 +265,7 @@ main() {
   login_acr
   push_image
 
-  disable_pubnet
+  # disable_pubnet
   create_container
 }
 
