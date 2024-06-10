@@ -1,17 +1,17 @@
-RG=netto240607v4
-ACR="$RG"acr
 REGION=eastus
 APPNAME=myapp
-ACRIDENTITY="$ACR"id
-
-VNETADDRESS=10.23.0.0
-VNETNAME="$RG"VNET
-VSUBNETNAME="$RG"SUBNET
 DNSZONENAME="privatelink.azurecr.io"
-ACRSUBNETNAME="$RG"ACRSUBNET
 IPFILES=myips.txt
 
 set -x
+
+setup_variables() {
+  ACR="$RG"acr
+  ACRIDENTITY="$ACR"id
+  VNETNAME="$RG"VNET
+  VSUBNETNAME="$RG"SUBNET
+  ACRSUBNETNAME="$RG"ACRSUBNET
+}
 
 get_random_code() {
 
@@ -35,23 +35,32 @@ create_acr() {
 }
 
 create_useridentity() {
-  az identity create --resource-group $RG --name "$ACRIDENTITY"
+  az identity create --resource-group "$RG" --name "$ACRIDENTITY"
 }
 
 enable_ips() {
+
   public_ip=$(curl -s -4 ifconfig.co)
-  az acr network-rule add --resource-group $RG --name $ACR --ip-address "$public_ip"
+  az acr network-rule add --resource-group "$RG" --name "$ACR" --ip-address "$public_ip"
 
   if [ -f "$IPFILES" ]; then
     while IFS= read -r line; do
-      az acr network-rule add --resource-group $RG --name $ACR --ip-address "$line"
+      az acr network-rule add --resource-group "$RG" --name "$ACR" --ip-address "$line"
     done <"$IPFILES"
   fi
 }
 
+enable_pubnet() {
+  az acr update --name "$ACR" --resource-group "$RG" --public-network-enabled true
+}
+
+disable_pubnet() {
+  az acr update --name "$ACR" --resource-group "$RG" --public-network-enabled false
+}
+
 login_acr() {
 
-  az acr network-rule list --resource-group $RG --name $ACR
+  az acr network-rule list --resource-group "$RG" --name "$ACR"
   az acr login --name "$ACR"
 }
 
@@ -68,10 +77,21 @@ assign_identity_acr() {
     --resource-group "$RG" \
     --identities "$userid"
 
-  az role assignment create \
-    --assignee "$spid" \
-    --role AcrPull \
-    --scope "$acrid"
+  attempts=3
+  while [ $attempts -gt 0 ]; do
+    sleep 10
+    az role assignment create \
+      --assignee "$spid" \
+      --role AcrPull \
+      --scope "$acrid"
+    if [ $? -eq 0 ]; then
+      break
+    else
+      echo "Retrying role assignment. Attempts left: $attempts"
+    fi
+
+    attempts=$((attempts - 1))
+  done
 }
 
 push_image() {
@@ -113,10 +133,20 @@ get_subnetid() {
   echo "$subnetid"
 }
 
+get_endpointsubnetid() {
+
+  subnetid=$(az network vnet subnet show \
+    --resource-group "$RG" --vnet-name "$VNETNAME" \
+    --name "$ACRSUBNETNAME" \
+    --query "id" -o tsv)
+
+  echo "$subnetid"
+}
+
 create_acr_endpoint() {
 
   acr_id=$(az acr show -n "$ACR" -g "$RG" --query "id" -o tsv)
-  subnetid=$(get_subnetid)
+  subnetid=$(get_endpointsubnetid)
   vnetid=$(az network vnet show \
     --resource-group "$RG" \
     --name "$VNETNAME" \
@@ -124,7 +154,7 @@ create_acr_endpoint() {
 
   endpointname="acr-privendpoint"
   endpoint=$(az network private-endpoint create \
-    --resource-group $RG --name $endpointname \
+    --resource-group "$RG" --name $endpointname \
     --location $REGION \
     --subnet "$subnetid" \
     --private-connection-resource-id "${acr_id}" \
@@ -157,9 +187,7 @@ create_container() {
   acridentity=$(az identity show --resource-group "$RG" --name "$ACRIDENTITY" --query id --output tsv)
   subnetid=$(get_subnetid)
 
-  containername=container$(get_random_code)
-
-  az container create --name "$containername" \
+  az container create --name "$CONTAINERNAME" \
     --resource-group "$RG" \
     --acr-identity "$acridentity" \
     --assign-identity "$acridentity" \
@@ -167,17 +195,78 @@ create_container() {
     --subnet "$subnetid"
 
   az container list --output table
-  az container logs -g $RG -n "$containername"
+  az container logs -g "$RG" -n "$CONTAINERNAME"
 
 }
 
-create_resource_group
-create_acr
-create_useridentity
-assign_identity_acr
-enable_ips
-login_acr
-create_vnet_subnet
-create_acr_endpoint
-push_image
-create_container
+usage() {
+  echo "Usage: $0 -r <resourcegroup>  -a <ipaddress> [ -n <containername> ] "
+  echo "  -r <resourcegroup>  Resource group"
+  echo "  -n <containername>  Container name (optional)"
+  echo "  -a <ipaddress>      VNet IP address (e.g. 10.51.0.0) "
+  exit
+}
+
+parse_arguments() {
+  while getopts ":r:a:n:" opt; do
+    case ${opt} in
+    r)
+      option_r=$OPTARG
+      ;;
+    a)
+      option_a=$OPTARG
+      ;;
+    n)
+      option_n=$OPTARG
+      ;;
+
+    \?)
+      echo "Invalid option: $OPTARG" 1>&2
+      usage
+      ;;
+    :)
+      echo "Option -$OPTARG requires an argument." 1>&2
+      usage
+      ;;
+    esac
+  done
+  shift $((OPTIND - 1))
+
+  if [ -z "${option_r+x}" ] || [ -z "${option_a+x}" ]; then
+    echo "Missing required options."
+    usage
+  fi
+
+  RG=$option_r
+  VNETADDRESS=${option_a:-""}
+  if [ -n "${option_n+x}" ]; then
+    CONTAINERNAME=$option_n
+  else
+    CONTAINERNAME=container$(get_random_code)
+  fi
+
+  setup_variables
+
+}
+
+main() {
+  parse_arguments "$@"
+
+  create_resource_group
+  create_acr
+  create_useridentity
+  assign_identity_acr
+
+  create_vnet_subnet
+  create_acr_endpoint
+  enable_ips
+  enable_pubnet
+
+  login_acr
+  push_image
+
+  disable_pubnet
+  create_container
+}
+
+main "$@"
