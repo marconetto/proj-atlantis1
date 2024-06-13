@@ -136,17 +136,7 @@ def create_pool(batch_client):
     )
 
     container_registry = None
-    if "ACR_USERNAME" in os.environ and "ACR_PASSWORD" in os.environ:
-        print("using ACR_USERNAME and ACR_PASSWORD to authenticate to ACR")
-        user_name = os.environ["ACR_USERNAME"]
-        password = os.environ["ACR_PASSWORD"]
-
-        container_registry = batchmgmtmodels.ContainerRegistry(
-            registry_server=myconfig["acrserver"],
-            user_name=user_name,
-            password=password,
-        )
-    elif "acruseridentity" in myconfig:
+    if "acruseridentity" in myconfig:
         print(
             f"using acruseridentity from config to ACR: {myconfig['acruseridentity']}"
         )
