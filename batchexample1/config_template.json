@@ -1,0 +1,9 @@
+{
+  "subscription": "<replace>",
+  "rg": "<replace>",
+  "region": "eastus",
+  "acrserver": "<replace>.azurecr.io",
+  "acrimage": "<replace>",
+  "acrimage_tag": "latest",
+  "acruseridentity": "/subscriptions/<subscription id>/resourceGroups/<resourcegroup>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/<identity>"
+}
