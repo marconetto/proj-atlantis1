@@ -2,6 +2,7 @@ import json
 import os
 import random
 import sys
+import uuid
 
 import azure.batch.models as batchmodels
 import azure.mgmt.batch.models as batchmgmtmodels
@@ -20,7 +21,20 @@ from azure_identity_credential_adapter import AzureIdentityCredentialAdapter
 myconfig = {}
 
 
+def is_valid_uuid(uuid_to_test, version=4):
+    try:
+        uuid_obj = uuid.UUID(uuid_to_test, version=version)
+    except ValueError:
+        return False
+    return True
+
+
 def get_subscription_id(subscription_name):
+
+    # allows user to specify subscription id directly
+    if is_valid_uuid(subscription_name):
+        return subscription_name
+
     credential = DefaultAzureCredential()
 
     subscription_client = SubscriptionClient(credential)
@@ -260,28 +274,15 @@ def get_subscription(subscription_name):
     return None
 
 
-def get_tenant_id(subscription_name):
-    credential = DefaultAzureCredential()
-    sub = get_subscription(subscription_name)
-
-    if sub is None:
-        print("Cannot find subscription: " + subscription_name)
-        sys.exit(1)
-
-    tenant_id = sub.tenant_id
-    return tenant_id
-
-
 args = sys.argv
 if len(args) != 2:
-    print("Usage: mybatch.py <configfile>")
+    program = args[0]
+    print(f"Usage: {program} <configfile>")
     sys.exit(1)
 
 myconfig = setup_config(args[1])
 
 credential = DefaultAzureCredential()
-
-myconfig["tenant_id"] = get_tenant_id(myconfig["subscription_name"])
 
 create_batch_account(
     myconfig["subscription"],

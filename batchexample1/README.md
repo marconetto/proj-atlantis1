@@ -45,7 +45,7 @@ cp config_template.json config.json
 You need to update the `config.json` file:
 ```
 {
-  "subscription": "<replace>",
+  "subscription": "<subscriptionname or subscription id>",
   "rg": "<replace>",
   "region": "eastus",
   "acrserver": "<replace>.azurecr.io",
